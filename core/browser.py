@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 def _build_options() -> ChromiumOptions:
     options = ChromiumOptions()
+    options.add_argument('--proxy-server=socks5://akira-xray:1080')
     headless_value = os.getenv("BROWSER_HEADLESS", "false").strip().lower()
     options.headless = headless_value in {"1", "true", "yes", "on"}
     chrome_binary = os.getenv("CHROME_BINARY")
