@@ -31,4 +31,4 @@ services:
 
 networks:
   akira-net:
-    driver: bridge
+    external: true
