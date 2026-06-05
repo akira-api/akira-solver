@@ -60,9 +60,18 @@ async def wait_for_turnstile_cookie(tab, timeout: int = 60) -> bool:
     return False
 
 
+_IPIN_COOKIES = {
+    "_as_ipin_tz": "Asia/Jakarta",
+    "_as_ipin_lc": "en-US",
+    "_as_ipin_ct": "ID",
+}
+
+
 def build_cookie_string(cookies: list[Cookie]) -> str:
-    """Convert cookie list to a single cookie header string."""
-    return "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+    """Build cookie header from turnstile token plus hardcoded ipin cookies."""
+    parts = [f"{c['name']}={c['value']}" for c in cookies if c["name"] == "_as_turnstile"]
+    parts.extend(f"{k}={v}" for k, v in _IPIN_COOKIES.items())
+    return "; ".join(parts)
 
 
 async def solve(tab, url: str, timeout: int = 60) -> tuple[str, float]:
