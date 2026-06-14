@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 import os
@@ -39,7 +40,13 @@ class BrowserManager:
         self._browser: Chrome | None = None
         self._bootstrap_tab = None
 
+    @property
+    def is_running(self) -> bool:
+        return self._browser is not None
+
     async def start(self) -> None:
+        if self._browser:
+            return
         options = _build_options()
         self._browser = Chrome(options=options)
         logger.info("Starting browser process")
@@ -67,7 +74,16 @@ class BrowserManager:
         if not self._browser:
             raise RuntimeError("Browser is not started")
         logger.debug("Creating new browser tab")
-        tab = await self._browser.new_tab()
+        try:
+            tab = await self._browser.new_tab()
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "circuit breaker" in err_msg or "websocket" in err_msg or "cdp" in err_msg:
+                logger.warning("Browser unresponsive (%s), restarting...", exc)
+                await self.restart()
+                tab = await self._browser.new_tab()
+            else:
+                raise
         logger.debug("New tab created: %s", getattr(tab, "_target_id", "unknown"))
         return tab
 
@@ -77,6 +93,13 @@ class BrowserManager:
             await tab.close()
         except Exception:
             logger.exception("Error closing tab")
+
+    async def restart(self) -> None:
+        logger.info("Restarting browser...")
+        await self.stop()
+        await asyncio.sleep(2)
+        await self.start()
+        logger.info("Browser restarted")
 
 
 browser_manager = BrowserManager()

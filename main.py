@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from dotenv import load_dotenv
@@ -13,6 +14,9 @@ from api.routes import router
 from core.browser import browser_manager
 from core.queue import solver_queue
 from middleware.auth import ApiKeyAuthMiddleware
+
+
+_browser_restart_task: asyncio.Task | None = None
 
 
 # Configure logging from environment variable `LOG_LEVEL`
@@ -60,15 +64,38 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 
+async def _browser_restart_loop(interval: int) -> None:
+    logger = logging.getLogger(__name__)
+    while True:
+        await asyncio.sleep(interval)
+        logger.info("Browser restart interval reached (%ds), restarting...", interval)
+        await browser_manager.restart()
+
+
 @app.on_event("startup")
 async def startup() -> None:
-    logging.getLogger(__name__).info("Application startup: initializing browser and worker")
+    logger = logging.getLogger(__name__)
+    logger.info("Application startup: initializing browser and worker")
     await browser_manager.start()
     solver_queue.start_worker()
+
+    interval = int(os.getenv("BROWSER_RESTART_INTERVAL", "7200"))
+    global _browser_restart_task
+    _browser_restart_task = asyncio.create_task(_browser_restart_loop(interval))
+    logger.info("Browser restart task started (interval=%ds)", interval)
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    logging.getLogger(__name__).info("Application shutdown: stopping worker and browser")
+    logger = logging.getLogger(__name__)
+    logger.info("Application shutdown: stopping worker and browser")
+
+    if _browser_restart_task:
+        _browser_restart_task.cancel()
+        try:
+            await _browser_restart_task
+        except asyncio.CancelledError:
+            pass
+
     await solver_queue.stop_worker()
     await browser_manager.stop()
